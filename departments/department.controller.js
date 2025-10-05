@@ -1,47 +1,44 @@
-const service = require('./department.service');
+const express = require('express');
+const router = express.Router();
+const departmentService = require('./department.service'); 
 
-module.exports = { 
-  getAll, 
-  getById, 
-  create, 
-  update, 
-  delete: _delete 
-};
+// routes
+router.get('/', getAll);
+router.get('/:id', getById);
+router.post('/', create);
+router.put('/:id', update);
+router.delete('/:id', _delete);
 
-// ===== Controller Handlers ======
+// export router
+module.exports = router;
 
-async function getAll(req, res, next) {
-  try {
-    const depts = await service.getAll();
-    res.json(depts);
-  } catch (err) { next(err); }
+// controller functions
+function getAll(req, res, next) {
+  requestService.getAll()
+    .then(requests => res.json(requests))
+    .catch(next);
 }
 
-async function getById(req, res, next) {
-  try {
-    const dept = await service.getById(req.params.id);
-    if (!dept) return res.sendStatus(404);
-    res.json(dept);
-  } catch (err) { next(err); }
+function getById(req, res, next) {
+  requestService.getById(req.params.id)
+    .then(request => request ? res.json(request) : res.sendStatus(404))
+    .catch(next);
 }
 
-async function create(req, res, next) {
-  try {
-    const dept = await service.create(req.body);
-    res.status(201).json(dept);
-  } catch (err) { next(err); }
+function create(req, res, next) {
+  requestService.create(req.body)
+    .then(request => res.json(request))
+    .catch(next);
 }
 
-async function update(req, res, next) {
-  try {
-    const dept = await service.update(req.params.id, req.body);
-    res.json(dept);
-  } catch (err) { next(err); }
+function update(req, res, next) {
+  requestService.update(req.params.id, req.body)
+    .then(request => res.json(request))
+    .catch(next);
 }
 
-async function _delete(req, res, next) {
-  try {
-    await service.delete(req.params.id);
-    res.json({ message: 'Department deleted' });
-  } catch (err) { next(err); }
+function _delete(req, res, next) {
+  requestService.delete(req.params.id)
+    .then(() => res.json({ message: 'Request deleted successfully' }))
+    .catch(next);
 }

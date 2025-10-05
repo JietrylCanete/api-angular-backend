@@ -1,45 +1,59 @@
-// server.js
 require('rootpath')();
 const express = require('express');
-const app = express();
+const cors = require('cors');
 const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
-const cors = require('cors');
 const errorHandler = require('_middleware/error-handler');
+const db = require('_helpers/db');
 
-// Basic middleware
+const app = express();
+
+// ✅ --- FIXED CORS CONFIGURATION ---
+const allowedOrigins = [
+  'http://localhost:4200', // for local dev
+  'https://api-angular-frontend-rmsj10ism-jietryls-projects.vercel.app' // your deployed Vercel frontend
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('❌ Blocked by CORS:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
+
+//  --- REQUIRED MIDDLEWARE ---
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-// Cors configuration
-app.use(cors({
-    origin: [
-      'http://localhost:4200', 
-      'http://localhost:3000', 
-      'https://api-angular-backend.onrender.com',
-      'https://api-angular-frontend.vercel.app'
-    ],
-    credentials: true
-}));
-
-// API routes
+//  --- ROUTES ---
 app.use('/accounts', require('./accounts/accounts.controller'));
 app.use('/employees', require('./employees/employee.controller'));
-app.use('/departments', require('./departments'));
-app.use('/requests', require('./requests'));
-app.use('/employee-workflows', require('./employees/employee-workflow.controller'));
+app.use('/departments', require('./departments/department.controller'));
+app.use('/requests', require('./requests/request.controller'));
 
-// Health check route
-app.get('/health', (req, res) => {
-    res.json({ status: 'OK', message: 'Server is running' });
-});
-
-// Global error handler
+//  --- GLOBAL ERROR HANDLER ---
 app.use(errorHandler);
 
-// Start server
+//  --- CONNECT TO DATABASE ---
+(async () => {
+  try {
+    if (db && db.sequelize) {
+      await db.sequelize.sync({ alter: true });
+      console.log('[DB] Connected and synced successfully!');
+    } else {
+      console.error('[DB] Initialization failed: Sequelize not available');
+    }
+  } catch (err) {
+    console.error('[DB] Connection failed:', err);
+  }
+})();
+
+// ✅ --- START SERVER ---
 const port = process.env.PORT || 4000;
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
+app.listen(port, () => console.log(`🚀 Server running on port ${port}`));

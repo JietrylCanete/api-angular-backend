@@ -1,4 +1,7 @@
 // requests/request.controller.js
+
+const express = require('express');
+const router = express.Router();
 const Joi = require('joi');
 const validateRequest = require('_middleware/validate-request');
 const requestService = require('./request.service');
@@ -12,6 +15,8 @@ module.exports = {
   update,
   delete: _delete
 };
+
+module.exports = router;
 
 // ------------------ Schemas ------------------
 
