@@ -11,7 +11,8 @@ const app = express();
 // ✅ --- FIXED CORS CONFIGURATION ---
 const allowedOrigins = [
   'http://localhost:4200', // for local dev
-  'https://api-angular-frontend-rmsj10ism-jietryls-projects.vercel.app' // your deployed Vercel frontend
+  'https://api-angular-frontend-rmsj10ism-jietryls-projects.vercel.app', // your deployed Vercel frontend
+  'https://api-angular-frontend.vercel.app' // ✅ also include this — seen in your Render logs
 ];
 
 app.use(cors({
@@ -26,21 +27,24 @@ app.use(cors({
   credentials: true,
 }));
 
-//  --- REQUIRED MIDDLEWARE ---
+// ✅ --- handle preflight requests globally ---
+app.options(/.*/, cors());
+
+// --- REQUIRED MIDDLEWARE ---
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-//  --- ROUTES ---
+// --- ROUTES ---
 app.use('/accounts', require('./accounts/accounts.controller'));
 app.use('/employees', require('./employees/employee.controller'));
 app.use('/departments', require('./departments/department.controller'));
 app.use('/requests', require('./requests/request.controller'));
 
-//  --- GLOBAL ERROR HANDLER ---
+// --- GLOBAL ERROR HANDLER ---
 app.use(errorHandler);
 
-//  --- CONNECT TO DATABASE ---
+// --- CONNECT TO DATABASE ---
 (async () => {
   try {
     if (db && db.sequelize) {
@@ -54,6 +58,6 @@ app.use(errorHandler);
   }
 })();
 
-// ✅ --- START SERVER ---
+// --- START SERVER ---
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
