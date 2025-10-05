@@ -12,6 +12,15 @@ initialize().catch(err => {
   process.exit(1);
 });
 
+
+// Add this at the top of the initialize() function in _helpers/db.js
+console.log('Database connection details:');
+console.log('Host:', host);
+console.log('Port:', port);
+console.log('User:', user);
+console.log('Database:', database);
+console.log('Password length:', password ? password.length : 'null');
+
 async function initialize() {
   const { host, port, user, password, database } = config.database;
 
@@ -28,22 +37,16 @@ async function initialize() {
     await createConn.end();
   }
 
-    // initialize sequelize
+  // initialize sequelize
   const sequelize = new Sequelize(database, user, password, {
     host,
     port,
     dialect: 'mysql',
-    logging: false, // Turn off logs in production
+    logging: msg => console.debug('[sequelize]', msg),
     define: { timestamps: true },
-    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
-    dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false
-      }
-    }
+    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
   });
-  
+
   db.sequelize = sequelize;
 
   // -------------------------
