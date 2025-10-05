@@ -12,15 +12,6 @@ initialize().catch(err => {
   process.exit(1);
 });
 
-
-// Add this at the top of the initialize() function in _helpers/db.js
-console.log('Database connection details:');
-console.log('Host:', host);
-console.log('Port:', port);
-console.log('User:', user);
-console.log('Database:', database);
-console.log('Password length:', password ? password.length : 'null');
-
 async function initialize() {
   const { host, port, user, password, database } = config.database;
 
