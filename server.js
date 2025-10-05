@@ -14,7 +14,12 @@ app.use(cookieParser());
 
 // Simple CORS - This should work without errors
 app.use(cors({
-    origin: ['http://localhost:4200', 'http://localhost:3000', 'https://api-angular-backend.onrender.com'],
+    origin: [
+      'http://localhost:4200', 
+      'http://localhost:3000', 
+      'https://api-angular-backend.onrender.com',
+      'https://api-angular-frontend.vercel.app'
+    ],
     credentials: true
 }));
 
