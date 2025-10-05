@@ -13,7 +13,27 @@ app.use(bodyParser.json());
 app.use(cookieParser());
 
 // allow cors requests from any origin and with credentials
-app.use(cors({ origin: (origin, callback) => callback(null, true), credentials: true }));
+//app.use(cors({ origin: (origin, callback) => callback(null, true), credentials: true }));
+// Add this after: app.use(cors({ origin: (origin, callback) => callback(null, true), credentials: true }));
+
+// Health check route
+// Simple health check route
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    message: 'Backend is running successfully!',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Another simple test route
+app.get('/test', (req, res) => {
+  res.json({ 
+    message: 'Hello World! Your backend is working!',
+    success: true 
+  });
+});
+
 
 // api routes
 const accountRoutes = require('./accounts/accounts.controller');

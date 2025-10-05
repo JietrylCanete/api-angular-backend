@@ -1,19 +1,19 @@
 {
     "database": {
-        "host": "${DB_HOST}",
-        "port": "${DB_PORT}",
-        "user": "${DB_USER}",
-        "password": "${DB_PASSWORD}",
-        "database": "${DB_NAME}"
+        "host": "mysql-30a0fad1-jietrylcanete-7fcc.e.aivencloud.com",
+        "port": 11505,
+        "user": "avnadmin",
+        "password": "AVNS_6_8QYbVw9v8k9e5q6xX",
+        "database": "defaultdb"
     },
-    "secret": "${JWT_SECRET}",
-    "emailFrom": "${EMAIL_FROM}",
+    "secret": "49857eae-5b2d-4e74-b5e7-99953f347936",
+    "emailFrom": "info@node-mysql-signup-verification-api.com",
     "smtpOptions": {
-        "host": "${SMTP_HOST}",
-        "port": "${SMTP_PORT}",
+        "host": "smtp.ethereal.email",
+        "port": 587,
         "auth": {
-            "user": "${SMTP_USER}",
-            "pass": "${SMTP_PASS}"
+            "user": "shyanne.hills25@ethereal.email",
+            "pass": "QkMGGHJaq2WcpKHME6"
         }
     }
 }

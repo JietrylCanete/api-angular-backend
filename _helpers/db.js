@@ -28,16 +28,22 @@ async function initialize() {
     await createConn.end();
   }
 
-  // initialize sequelize
+    // initialize sequelize
   const sequelize = new Sequelize(database, user, password, {
     host,
     port,
     dialect: 'mysql',
-    logging: msg => console.debug('[sequelize]', msg),
+    logging: false, // Turn off logs in production
     define: { timestamps: true },
-    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
+    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    }
   });
-
+  
   db.sequelize = sequelize;
 
   // -------------------------
