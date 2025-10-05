@@ -12,7 +12,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-// Simple CORS - This should work without errors
+// Cors configuration
 app.use(cors({
     origin: [
       'http://localhost:4200', 
