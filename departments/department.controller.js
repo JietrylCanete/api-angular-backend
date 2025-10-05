@@ -14,31 +14,31 @@ module.exports = router;
 
 // controller functions
 function getAll(req, res, next) {
-  requestService.getAll()
-    .then(requests => res.json(requests))
+  departmentService.getAll()  // FIXED: Changed from requestService to departmentService
+    .then(departments => res.json(departments))
     .catch(next);
 }
 
 function getById(req, res, next) {
-  requestService.getById(req.params.id)
-    .then(request => request ? res.json(request) : res.sendStatus(404))
+  departmentService.getById(req.params.id)  // FIXED: Changed from requestService to departmentService
+    .then(department => department ? res.json(department) : res.sendStatus(404))
     .catch(next);
 }
 
 function create(req, res, next) {
-  requestService.create(req.body)
-    .then(request => res.json(request))
+  departmentService.create(req.body)  // FIXED: Changed from requestService to departmentService
+    .then(department => res.json(department))
     .catch(next);
 }
 
 function update(req, res, next) {
-  requestService.update(req.params.id, req.body)
-    .then(request => res.json(request))
+  departmentService.update(req.params.id, req.body)  // FIXED: Changed from requestService to departmentService
+    .then(department => res.json(department))
     .catch(next);
 }
 
 function _delete(req, res, next) {
-  requestService.delete(req.params.id)
-    .then(() => res.json({ message: 'Request deleted successfully' }))
+  departmentService.delete(req.params.id)  // FIXED: Changed from requestService to departmentService
+    .then(() => res.json({ message: 'Department deleted successfully' }))
     .catch(next);
 }

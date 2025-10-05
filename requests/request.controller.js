@@ -1,25 +1,20 @@
 // requests/request.controller.js
-
 const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const validateRequest = require('_middleware/validate-request');
 const requestService = require('./request.service');
 
-module.exports = {
-  getAll,
-  getById,
-  createSchema,
-  create,
-  updateSchema,
-  update,
-  delete: _delete
-};
+// Routes
+router.get('/', getAll);
+router.get('/:id', getById);
+router.post('/', createSchema, create);
+router.put('/:id', updateSchema, update);
+router.delete('/:id', _delete);
 
 module.exports = router;
 
-// ------------------ Schemas ------------------
-
+// Schema definitions
 function createSchema(req, res, next) {
   const schema = Joi.object({
     accountId: Joi.number().required(),
@@ -44,12 +39,11 @@ function updateSchema(req, res, next) {
   validateRequest(req, next, schema);
 }
 
-// ------------------ Handlers ------------------
-
+// Route handlers
 async function getAll(req, res, next) {
   try {
-    const list = await requestService.getAll();
-    res.json(list);
+    const requests = await requestService.getAll();
+    res.json(requests);
   } catch (err) {
     next(err);
   }
@@ -57,9 +51,9 @@ async function getAll(req, res, next) {
 
 async function getById(req, res, next) {
   try {
-    const r = await requestService.getById(req.params.requestId);
-    if (!r) return res.sendStatus(404);
-    res.json(r);
+    const request = await requestService.getById(req.params.id);
+    if (!request) return res.status(404).json({ message: 'Request not found' });
+    res.json(request);
   } catch (err) {
     next(err);
   }
@@ -67,8 +61,8 @@ async function getById(req, res, next) {
 
 async function create(req, res, next) {
   try {
-    const created = await requestService.create(req.body);
-    res.status(201).json(created);
+    const request = await requestService.create(req.body);
+    res.status(201).json(request);
   } catch (err) {
     next(err);
   }
@@ -76,8 +70,8 @@ async function create(req, res, next) {
 
 async function update(req, res, next) {
   try {
-    const updated = await requestService.update(req.params.requestId, req.body);
-    res.json(updated);
+    const request = await requestService.update(req.params.id, req.body);
+    res.json(request);
   } catch (err) {
     next(err);
   }
@@ -85,7 +79,7 @@ async function update(req, res, next) {
 
 async function _delete(req, res, next) {
   try {
-    await requestService.delete(req.params.requestId);
+    await requestService.delete(req.params.id);
     res.json({ message: 'Request deleted successfully' });
   } catch (err) {
     next(err);

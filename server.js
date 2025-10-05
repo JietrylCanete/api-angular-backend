@@ -8,56 +8,69 @@ const db = require('_helpers/db');
 
 const app = express();
 
-// ✅ --- FIXED CORS CONFIGURATION ---
-const allowedOrigins = [
-  'http://localhost:4200', // for local dev
-  'https://api-angular-frontend-rmsj10ism-jietryls-projects.vercel.app', // your deployed Vercel frontend
-  'https://api-angular-frontend.vercel.app' // ✅ also include this — seen in your Render logs
-];
-
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log('❌ Blocked by CORS:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-}));
-
-// ✅ --- handle preflight requests globally ---
-app.options(/.*/, cors());
-
-// --- REQUIRED MIDDLEWARE ---
+// --- BASIC MIDDLEWARE ---
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
+
+// --- SIMPLE CORS CONFIGURATION ---
+app.use(cors({
+  origin: [
+    'http://localhost:4200',
+    'https://api-angular-frontend-rmsj10ism-jietryls-projects.vercel.app',
+    'https://api-angular-frontend.vercel.app'
+  ],
+  credentials: true
+}));
+
+// --- HEALTH CHECK ---
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    service: 'Node.js Backend API'
+  });
+});
 
 // --- ROUTES ---
 app.use('/accounts', require('./accounts/accounts.controller'));
 app.use('/employees', require('./employees/employee.controller'));
 app.use('/departments', require('./departments/department.controller'));
 app.use('/requests', require('./requests/request.controller'));
+app.use('/employee-workflows', require('./employees/employee-workflow.controller'));
+
+// --- API ROOT ---
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Node.js Backend API is running!',
+    version: '1.0.0',
+    endpoints: {
+      accounts: '/accounts',
+      employees: '/employees', 
+      departments: '/departments',
+      requests: '/requests',
+      workflows: '/employee-workflows'
+    }
+  });
+});
+
+// --- 404 HANDLER ---
+app.use('*', (req, res) => {
+  res.status(404).json({ 
+    message: 'Route not found',
+    path: req.originalUrl
+  });
+});
 
 // --- GLOBAL ERROR HANDLER ---
 app.use(errorHandler);
 
-// --- CONNECT TO DATABASE ---
-(async () => {
-  try {
-    if (db && db.sequelize) {
-      await db.sequelize.sync({ alter: true });
-      console.log('[DB] Connected and synced successfully!');
-    } else {
-      console.error('[DB] Initialization failed: Sequelize not available');
-    }
-  } catch (err) {
-    console.error('[DB] Connection failed:', err);
-  }
-})();
-
 // --- START SERVER ---
 const port = process.env.PORT || 4000;
-app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
+
+app.listen(port, () => {
+  console.log(`🚀 Server running on port ${port}`);
+  console.log(`📍 Health check: http://localhost:${port}/health`);
+  console.log(`📍 API Root: http://localhost:${port}/`);
+  console.log('✅ All routes loaded successfully');
+});

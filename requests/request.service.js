@@ -1,5 +1,5 @@
 const db = require('_helpers/db');
-const logWorkflow = require('_helpers/workflow-logger'); // 🔹 added
+const logWorkflow = require('_helpers/workflow-logger');
 
 module.exports = {
   getAll,
@@ -12,23 +12,28 @@ module.exports = {
 const ALLOWED_TYPES = ['equipment', 'leave', 'resources'];
 const ALLOWED_STATUS = ['pending', 'approved', 'disapproved', 'rejected'];
 
-// ------------------------- Get all -------------------------
 async function getAll() {
   return await db.Request.findAll({
-    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }],
+    include: [{ 
+      model: db.Account, 
+      attributes: ['id', 'email', 'firstName', 'lastName'], 
+      required: false 
+    }],
     order: [['created', 'DESC']]
   });
 }
 
-// ------------------------- Get by requestId -------------------------
-async function getById(requestId) {
-  if (requestId === undefined || requestId === null) return null;
-  return await db.Request.findByPk(requestId, {
-    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }]
+async function getById(id) {
+  if (!id) return null;
+  return await db.Request.findByPk(id, {
+    include: [{ 
+      model: db.Account, 
+      attributes: ['id', 'email', 'firstName', 'lastName'], 
+      required: false 
+    }]
   });
 }
 
-// ------------------------- Helpers -------------------------
 async function resolveAccountIdFromEmail(email) {
   if (!email) return null;
   const account = await db.Account.findOne({ where: { email } });
@@ -40,26 +45,19 @@ async function resolveEmployeeFromAccount(accountId) {
   return await db.Employee.findOne({ where: { accountId } });
 }
 
-// ------------------------- Create -------------------------
-/**
- * params expected:
- *  { accountId?, employeeEmail?, type, items, quantity, status? }
- */
 async function create(params) {
-  // resolve accountId if not provided
-  let accountId = params.accountId ?? null;
+  let accountId = params.accountId || null;
+  
   if (!accountId && params.employeeEmail) {
     accountId = await resolveAccountIdFromEmail(params.employeeEmail);
   }
 
   if (!accountId) throw 'accountId is required';
 
-  // validate type
-  if (!ALLOWED_TYPES.includes((params.type || '').toString())) {
+  if (!ALLOWED_TYPES.includes(params.type)) {
     throw 'Invalid request type';
   }
 
-  // validate items and quantity
   if (!params.items || String(params.items).trim() === '') {
     throw 'items is required';
   }
@@ -69,12 +67,11 @@ async function create(params) {
     throw 'quantity must be an integer >= 1';
   }
 
-  // validate status if present
   if (params.status && !ALLOWED_STATUS.includes(params.status)) {
     throw 'Invalid status';
   }
 
-  const r = await db.Request.create({
+  const request = await db.Request.create({
     accountId,
     type: params.type,
     items: String(params.items).trim(),
@@ -83,94 +80,88 @@ async function create(params) {
     created: new Date()
   });
 
-  // 🔹 log workflow
   const employee = await resolveEmployeeFromAccount(accountId);
   if (employee) {
     await logWorkflow(
       employee.EmployeeID,
       'Request Created',
-      `Request #${r.id || r.requestId} (${r.type}) created for ${r.items} x${r.quantity}`
+      `Request #${request.id} (${request.type}) created for ${request.items} x${request.quantity}`
     );
   }
 
-  const pk = r.requestId ?? r.id ?? null;
-  return await getById(pk);
+  return await getById(request.id);
 }
 
-// ------------------------- Update -------------------------
-async function update(requestId, params) {
-  const request = await db.Request.findByPk(requestId);
+async function update(id, params) {
+  const request = await db.Request.findByPk(id);
   if (!request) throw 'Request not found';
 
-  // If employeeEmail provided and accountId not, try to resolve
   if (!params.accountId && params.employeeEmail) {
     const resolved = await resolveAccountIdFromEmail(params.employeeEmail);
     if (resolved) params.accountId = resolved;
   }
 
-  // If changing accountId, validate account exists
   if (params.accountId && params.accountId !== request.accountId) {
     const account = await db.Account.findByPk(params.accountId);
     if (!account) throw 'Related account not found for new accountId';
   }
 
-  // validate type/status if present
-  if (params.type && !ALLOWED_TYPES.includes(params.type)) throw 'Invalid request type';
-  if (params.status && !ALLOWED_STATUS.includes(params.status)) throw 'Invalid status';
+  if (params.type && !ALLOWED_TYPES.includes(params.type)) {
+    throw 'Invalid request type';
+  }
+  
+  if (params.status && !ALLOWED_STATUS.includes(params.status)) {
+    throw 'Invalid status';
+  }
 
-  // validate items/quantity if provided
-  if (Object.prototype.hasOwnProperty.call(params, 'items')) {
+  if (params.items !== undefined) {
     if (!params.items || String(params.items).trim() === '') {
       throw 'items cannot be empty';
     }
     request.items = String(params.items).trim();
   }
 
-  if (Object.prototype.hasOwnProperty.call(params, 'quantity')) {
+  if (params.quantity !== undefined) {
     const qty = Number(params.quantity);
     if (!Number.isFinite(qty) || qty < 1) throw 'quantity must be an integer >= 1';
     request.quantity = Math.trunc(qty);
   }
 
-  // copy other allowed fields
   const allowed = ['accountId', 'type', 'status'];
-  for (const f of allowed) {
-    if (Object.prototype.hasOwnProperty.call(params, f)) {
-      request[f] = params[f];
+  allowed.forEach(field => {
+    if (params[field] !== undefined) {
+      request[field] = params[field];
     }
-  }
+  });
 
   request.updated = new Date();
   await request.save();
 
-  // 🔹 log workflow
   const employee = await resolveEmployeeFromAccount(request.accountId);
   if (employee) {
     await logWorkflow(
       employee.EmployeeID,
       'Request Updated',
-      `Request #${request.id || request.requestId} updated (status: ${request.status})`
+      `Request #${request.id} updated (status: ${request.status})`
     );
   }
 
-  const pk = request.requestId ?? request.id ?? null;
-  return await getById(pk);
+  return await getById(request.id);
 }
 
-// ------------------------- Delete -------------------------
-async function _delete(requestId) {
-  const r = await db.Request.findByPk(requestId);
-  if (!r) throw 'Request not found';
-  const emp = await resolveEmployeeFromAccount(r.accountId);
+async function _delete(id) {
+  const request = await db.Request.findByPk(id);
+  if (!request) throw 'Request not found';
+  
+  const employee = await resolveEmployeeFromAccount(request.accountId);
+  
+  await request.destroy();
 
-  await r.destroy();
-
-  // 🔹 log workflow
-  if (emp) {
+  if (employee) {
     await logWorkflow(
-      emp.EmployeeID,
+      employee.EmployeeID,
       'Request Deleted',
-      `Request #${requestId} was deleted`
+      `Request #${id} was deleted`
     );
   }
 }
