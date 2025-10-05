@@ -52,9 +52,6 @@ async function initialize() {
   // Register EmployeeWorkflow model (new)
   db.EmployeeWorkflow = require('../employees/employee-workflow.model.js')(sequelize);
 
-  // If you previously had a generic workflows folder, keep it if needed:
-  // db.Workflow = require('../workflows/workflow.model.js')(sequelize);
-
   // -------------------------
   // Define associations
   // -------------------------
