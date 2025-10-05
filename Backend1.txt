@@ -1,85 +1,3 @@
-
-================================================================================
-File: .vs\group-project-repo\v17\DocumentLayout.json
-Size: 2.56 kB
-================================================================================
-
-{
-  "Version": 1,
-  "WorkspaceRootPath": "C:\\Users\\Kenith Labonite\\group-project-repo\\",
-  "Documents": [
-    {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Kenith Labonite\\group-project-repo\\server.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:server.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\Kenith Labonite\\group-project-repo\\accounts\\account.model.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:accounts\\account.model.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
-    }
-  ],
-  "DocumentGroupContainers": [
-    {
-      "Orientation": 0,
-      "VerticalTabListWidth": 256,
-      "DocumentGroups": [
-        {
-          "DockedWidth": 200,
-          "SelectedChildIndex": 0,
-          "Children": [
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
-              "Title": "server.js",
-              "DocumentMoniker": "C:\\Users\\Kenith Labonite\\group-project-repo\\server.js",
-              "RelativeDocumentMoniker": "server.js",
-              "ToolTip": "C:\\Users\\Kenith Labonite\\group-project-repo\\server.js",
-              "RelativeToolTip": "server.js",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-07-21T14:21:38.787Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "account.model.js",
-              "DocumentMoniker": "C:\\Users\\Kenith Labonite\\group-project-repo\\accounts\\account.model.js",
-              "RelativeDocumentMoniker": "accounts\\account.model.js",
-              "ToolTip": "C:\\Users\\Kenith Labonite\\group-project-repo\\accounts\\account.model.js",
-              "RelativeToolTip": "accounts\\account.model.js",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-07-21T14:21:26.704Z",
-              "EditorCaption": ""
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-
-================================================================================
-File: .vs\VSWorkspaceState.json
-Size: 175 B
-================================================================================
-
-{
-  "ExpandedNodes": [
-    "",
-    "\\accounts",
-    "\\_helpers",
-    "\\_middleware"
-  ],
-  "SelectedNode": "\\swagger.yaml",
-  "PreviewInSolutionExplorer": false
-}
-
-================================================================================
-File: accounts\account.model.js
-Size: 2.1 kB
-================================================================================
-
 const { DataTypes } = require('sequelize');
 
 module.exports = model;
@@ -152,10 +70,9 @@ function model(sequelize) {
 
 ================================================================================
 File: accounts\account.service.js
-Size: 9.76 kB
+Size: 10.04 kB
 ================================================================================
 
-// account.service.js
 const config = require('config.json');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -164,6 +81,7 @@ const { Op } = require('sequelize');
 const sendEmail = require('_helpers/send-email');
 const db = require('_helpers/db');
 const Role = require('_helpers/role');
+const logWorkflow = require('_helpers/workflow-logger'); // 🔹 added
 
 module.exports = {
   authenticate,
@@ -330,6 +248,16 @@ async function create(params) {
   });
 
   await account.save();
+
+  // 🔹 log workflow if linked to employee
+  if (params.EmployeeID) {
+    await logWorkflow(
+      params.EmployeeID,
+      'Account Created',
+      `Account ${account.email} created and linked to employee`
+    );
+  }
+
   return basicDetails(account);
 }
 
@@ -780,7 +708,7 @@ Size: 584 B
         "port": 3306,
         "user": "root",
         "password": "root",
-        "database": "trial_db106"
+        "database": "trial_db107"
     },
     "secret": "49857eae-5b2d-4e74-b5e7-99953f347936",
     "emailFrom": "info@node-mysql-signup-verification-api.com",
@@ -1007,7 +935,7 @@ module.exports = router;
 
 ================================================================================
 File: employees\employee-workflow.controller.js
-Size: 462 B
+Size: 621 B
 ================================================================================
 
 // employees/employee-workflow.controller.js
@@ -1015,12 +943,17 @@ const express = require('express');
 const router = express.Router();
 const db = require('_helpers/db');
 
+// GET /employee-workflows/:employeeId
 router.get('/:id', async (req, res, next) => {
   try {
+    const employeeId = req.params.id;
+    if (!employeeId) return res.status(400).json({ message: 'Employee ID is required' });
+
     const workflows = await db.EmployeeWorkflow.findAll({
-      where: { employeeId: req.params.id },
+      where: { employeeId },
       order: [['createdAt', 'DESC']]
     });
+
     res.json(workflows);
   } catch (err) {
     next(err);
@@ -1032,26 +965,39 @@ module.exports = router;
 
 ================================================================================
 File: employees\employee-workflow.model.js
-Size: 805 B
+Size: 1.21 kB
 ================================================================================
 
-// employee-workflow.model.js
+// employees/employee-workflow.model.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  const EmployeeWorkflow = sequelize.define('EmployeeWorkflow', {
-    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    employeeId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
-    action: { type: DataTypes.STRING, allowNull: false },   // e.g. Created, Transferred, Request
-    description: { type: DataTypes.STRING },
-    createdAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
-  }, {
-    tableName: 'employee_workflows',
-    timestamps: false
-  });
+  const EmployeeWorkflow = sequelize.define(
+    'EmployeeWorkflow',
+    {
+      id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+      // store the employee primary key (EmployeeID) as string to match Employee model
+      employeeId: { type: DataTypes.STRING(32), allowNull: false },
+      action: { type: DataTypes.STRING, allowNull: false },   // e.g. 'Employee Created'
+      description: { type: DataTypes.TEXT, allowNull: true },
+      createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
+    },
+    {
+      tableName: 'employee_workflows',
+      timestamps: false
+    }
+  );
 
+  // optional association (not required but convenient)
   EmployeeWorkflow.associate = (models) => {
-    EmployeeWorkflow.belongsTo(models.Employee, { foreignKey: 'employeeId', as: 'Employee' });
+    if (models.Employee) {
+      EmployeeWorkflow.belongsTo(models.Employee, {
+        foreignKey: 'employeeId',
+        targetKey: 'EmployeeID',
+        as: 'Employee',
+        constraints: false // because targetKey isn't a numeric PK Sequelize expects by default
+      });
+    }
   };
 
   return EmployeeWorkflow;
@@ -1060,7 +1006,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: employees\employee.controller.js
-Size: 3.5 kB
+Size: 3.76 kB
 ================================================================================
 
 // employees/employees.controller.js
@@ -1176,6 +1122,14 @@ async function transferDepartment(req, res, next) {
     employee.departmentId = toDeptId;
     await employee.save();
 
+    // 🔹 log workflow for transfer
+    const logWorkflow = require('_helpers/workflow-logger');
+    await logWorkflow(
+      employee.EmployeeID,
+      'Transferred',
+      `Moved from department ${fromDeptId || 'None'} to ${toDeptId}`
+    );
+
     res.json({
       message: `Employee ${employeeId} transferred successfully`,
       fromDeptId,
@@ -1187,6 +1141,8 @@ async function transferDepartment(req, res, next) {
     next(err);
   }
 }
+
+
 
 
 ================================================================================
@@ -1703,11 +1659,11 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: requests\request.service.js
-Size: 4.63 kB
+Size: 5.54 kB
 ================================================================================
 
-// requests/request.service.js
 const db = require('_helpers/db');
+const logWorkflow = require('_helpers/workflow-logger'); // 🔹 added
 
 module.exports = {
   getAll,
@@ -1741,6 +1697,11 @@ async function resolveAccountIdFromEmail(email) {
   if (!email) return null;
   const account = await db.Account.findOne({ where: { email } });
   return account ? account.id : null;
+}
+
+async function resolveEmployeeFromAccount(accountId) {
+  if (!accountId) return null;
+  return await db.Employee.findOne({ where: { accountId } });
 }
 
 // ------------------------- Create -------------------------
@@ -1786,15 +1747,21 @@ async function create(params) {
     created: new Date()
   });
 
+  // 🔹 log workflow
+  const employee = await resolveEmployeeFromAccount(accountId);
+  if (employee) {
+    await logWorkflow(
+      employee.EmployeeID,
+      'Request Created',
+      `Request #${r.id || r.requestId} (${r.type}) created for ${r.items} x${r.quantity}`
+    );
+  }
+
   const pk = r.requestId ?? r.id ?? null;
   return await getById(pk);
 }
 
 // ------------------------- Update -------------------------
-/**
- * update(requestId, params)
- * allowed fields to update: accountId, type, items, quantity, status
- */
 async function update(requestId, params) {
   const request = await db.Request.findByPk(requestId);
   if (!request) throw 'Request not found';
@@ -1840,6 +1807,16 @@ async function update(requestId, params) {
   request.updated = new Date();
   await request.save();
 
+  // 🔹 log workflow
+  const employee = await resolveEmployeeFromAccount(request.accountId);
+  if (employee) {
+    await logWorkflow(
+      employee.EmployeeID,
+      'Request Updated',
+      `Request #${request.id || request.requestId} updated (status: ${request.status})`
+    );
+  }
+
   const pk = request.requestId ?? request.id ?? null;
   return await getById(pk);
 }
@@ -1848,7 +1825,18 @@ async function update(requestId, params) {
 async function _delete(requestId) {
   const r = await db.Request.findByPk(requestId);
   if (!r) throw 'Request not found';
+  const emp = await resolveEmployeeFromAccount(r.accountId);
+
   await r.destroy();
+
+  // 🔹 log workflow
+  if (emp) {
+    await logWorkflow(
+      emp.EmployeeID,
+      'Request Deleted',
+      `Request #${requestId} was deleted`
+    );
+  }
 }
 
 
@@ -2761,17 +2749,17 @@ module.exports = {
 
 ================================================================================
 File: _helpers\db.js
-Size: 2.69 kB
+Size: 3.44 kB
 ================================================================================
 
-const config = require('config.json');
+// _helpers/db.js
 const mysql = require('mysql2/promise');
+const config = require('config.json');
 const { Sequelize } = require('sequelize');
 
-module.exports = db = {
-  sequelize: null,
-  Sequelize
-};
+module.exports = (db = {});
+db.sequelize = null;
+db.Sequelize = Sequelize;
 
 initialize().catch(err => {
   console.error('Failed to initialize DB:', err);
@@ -2785,7 +2773,7 @@ async function initialize() {
     throw new Error('Missing database configuration in config.json');
   }
 
-  // 1) Ensure database exists
+  // ensure database exists
   const createConn = await mysql.createConnection({ host, port, user, password });
   try {
     await createConn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\`;`);
@@ -2794,7 +2782,7 @@ async function initialize() {
     await createConn.end();
   }
 
-  // 2) Initialize Sequelize
+  // initialize sequelize
   const sequelize = new Sequelize(database, user, password, {
     host,
     port,
@@ -2806,15 +2794,24 @@ async function initialize() {
 
   db.sequelize = sequelize;
 
-  // 3) Import models
+  // -------------------------
+  // IMPORT MODELS (ensure correct order)
+  // -------------------------
   db.Account = require('../accounts/account.model.js')(sequelize);
   db.RefreshToken = require('../accounts/refresh-token.model.js')(sequelize);
   db.Employee = require('../employees/employee.model.js')(sequelize);
   db.Department = require('../departments/department.model.js')(sequelize);
   db.Request = require('../requests/request.model.js')(sequelize);
-  db.Workflow = require('../workflows/workflow.model.js')(sequelize);
 
-  // 4) Define associations with correct aliases
+  // Register EmployeeWorkflow model (new)
+  db.EmployeeWorkflow = require('../employees/employee-workflow.model.js')(sequelize);
+
+  // If you previously had a generic workflows folder, keep it if needed:
+  // db.Workflow = require('../workflows/workflow.model.js')(sequelize);
+
+  // -------------------------
+  // Define associations
+  // -------------------------
   db.Account.hasMany(db.RefreshToken, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.RefreshToken.belongsTo(db.Account, { foreignKey: 'accountId' });
 
@@ -2827,7 +2824,13 @@ async function initialize() {
   db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
 
-  // 5) Sync DB schema
+  // optional association for workflow -> employee (no cascading)
+  if (db.EmployeeWorkflow && db.Employee) {
+    db.Employee.hasMany(db.EmployeeWorkflow, { foreignKey: 'employeeId', sourceKey: 'EmployeeID', as: 'Workflows', constraints: false });
+    db.EmployeeWorkflow.belongsTo(db.Employee, { foreignKey: 'employeeId', targetKey: 'EmployeeID', as: 'Employee', constraints: false });
+  }
+
+  // sync
   try {
     console.info('[DB] Syncing models to database (alter=true).');
     await sequelize.sync({ alter: true });
@@ -2932,15 +2935,21 @@ module.exports = router;
 
 ================================================================================
 File: _helpers\workflow-logger.js
-Size: 264 B
+Size: 504 B
 ================================================================================
 
 // _helpers/workflow-logger.js
 const db = require('./db');
 
+
 async function logWorkflow(employeeId, action, description) {
-  if (!employeeId) return;
-  await db.EmployeeWorkflow.create({ employeeId, action, description });
+  if (!employeeId || !action) return;
+  try {
+    await db.EmployeeWorkflow.create({ employeeId: String(employeeId), action, description });
+  } catch (err) {
+    // Don't crash the main flow if logging fails — log to console for debugging.
+    console.error('Failed to log workflow:', err && err.message ? err.message : err);
+  }
 }
 
 module.exports = logWorkflow;
