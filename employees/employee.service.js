@@ -1,6 +1,7 @@
 // employees/employee.service.js
 const db = require('_helpers/db');
 const logWorkflow = require('_helpers/workflow-logger');
+const { logDepartmentTransfer } = require('_helpers/workflow-logger');
 
 module.exports = {
   getAll,
@@ -137,13 +138,12 @@ async function update(id, params) {
 
   await employee.save();
 
-  // 🔹 log transfer if department changed
+  // 🔹 log transfer if department changed - USING NEW DEPARTMENT TRANSFER LOGGER
   if (params.departmentId && params.departmentId !== oldDept) {
     if (oldDept) await updateDepartmentCount(oldDept);
     if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
 
-    await logWorkflow(employee.EmployeeID, 'Transferred',
-      `Moved from department ${oldDept || 'None'} to ${employee.departmentId}`);
+    await logDepartmentTransfer(employee.EmployeeID, oldDept, employee.departmentId);
   } else if (params.departmentId) {
     await updateDepartmentCount(employee.departmentId);
   }

@@ -6,7 +6,7 @@
     "start": "node ./server.js",
     "start:dev": "nodemon ./server.js",
     "init-db": "node ./init-db.js",
-    "export:all": "folder2txt --output Backend1.txt C:/Users/Y PC/JAVA/F-B angular/Trial-repo_B"
+    "export:all": "folder2txt --output Backend1.txt C:/Users/GSC-STUDENT/aProduction/api-angular-backend"
   },
   "keywords": [],
   "author": "",
