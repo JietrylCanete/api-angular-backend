@@ -75,7 +75,7 @@ async function initialize() {
 
   // sync
   try {
-    console.info('[DB] Syncing models to database (alter=false).');
+    console.info('[DB] Syncing models to database (alter=false).');  //change into false
     await sequelize.sync({ alter: true });
     console.info('[DB] Sequelize sync completed.');
   } catch (syncErr) {
