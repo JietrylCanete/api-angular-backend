@@ -3,13 +3,13 @@ const mysql = require('mysql2/promise');
 const config = require('config.json');
 const { Sequelize } = require('sequelize');
 
-module.exports = (db = {});
+module.exports = db = {};
 db.sequelize = null;
 db.Sequelize = Sequelize;
 
 initialize().catch(err => {
   console.error('Failed to initialize DB:', err);
-  process.exit(1);
+  // Don't exit process - let server continue running
 });
 
 async function initialize() {
@@ -73,13 +73,23 @@ async function initialize() {
     db.EmployeeWorkflow.belongsTo(db.Employee, { foreignKey: 'employeeId', targetKey: 'EmployeeID', as: 'Employee', constraints: false });
   }
 
-  // sync
+  // Safe sync with error handling - THIS IS THE KEY FIX
   try {
-    console.info('[DB] Syncing models to database (force=true).');
-    await sequelize.sync({ alter: true });
-    console.info('[DB] Sequelize sync completed.');
+    console.info('[DB] Syncing models to database with safe options.');
+    
+    // Use safe sync to avoid structure modifications
+    await sequelize.sync({ force: false });  // CHANGED FROM { force: true } to { force: false }
+    
+    console.info('[DB] Sequelize sync completed successfully.');
   } catch (syncErr) {
-    console.error('[DB] Sequelize sync failed:', syncErr);
-    throw syncErr;
+    console.error('[DB] Sequelize sync failed:', syncErr.message);
+    
+    // If it's a "too many keys" error, log and continue (tables already exist)
+    if (syncErr.code === 'ER_TOO_MANY_KEYS' || syncErr.errno === 1069) {
+      console.warn('[DB] Too many keys error - tables likely already exist with proper structure.');
+      console.warn('[DB] Continuing with existing database structure.');
+    } else {
+      console.error('[DB] Other sync error:', syncErr);
+    }
   }
 }

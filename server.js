@@ -23,13 +23,27 @@ app.use(cors({
   credentials: true
 }));
 
-// --- HEALTH CHECK ---
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    service: 'Node.js Backend API'
-  });
+// --- DATABASE HEALTH CHECK ---
+app.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    await db.sequelize.authenticate();
+    
+    res.status(200).json({ 
+      status: 'OK', 
+      timestamp: new Date().toISOString(),
+      service: 'Node.js Backend API',
+      database: 'Connected'
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: 'ERROR', 
+      timestamp: new Date().toISOString(),
+      service: 'Node.js Backend API',
+      database: 'Disconnected',
+      error: error.message
+    });
+  }
 });
 
 // --- ROUTES ---
@@ -49,7 +63,8 @@ app.get('/', (req, res) => {
       employees: '/employees', 
       departments: '/departments',
       requests: '/requests',
-      workflows: '/employee-workflows'
+      workflows: '/employee-workflows',
+      health: '/health'
     }
   });
 });
@@ -73,4 +88,7 @@ app.listen(port, () => {
   console.log(`📍 Health check: http://localhost:${port}/health`);
   console.log(`📍 API Root: http://localhost:${port}/`);
   console.log('✅ All routes loaded successfully');
+  
+  // Database initialization will happen in the background
+  console.log('🔄 Database initialization in progress...');
 });
