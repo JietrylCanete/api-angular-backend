@@ -18,7 +18,8 @@ app.use(cors({
   origin: [
     'http://localhost:4200',
     'https://api-angular-frontend-rmsj10ism-jietryls-projects.vercel.app',
-    'https://api-angular-frontend.vercel.app'
+    'https://api-angular-frontend.vercel.app',
+    'https://api-angular-frontend-p9n3ot582-jietryls-projects.vercel.app'
   ],
   credentials: true
 }));

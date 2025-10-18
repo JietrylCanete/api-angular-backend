@@ -904,9 +904,10 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: departments\department.service.js
-Size: 1.98 kB
+Size: 3.2 kB
 ================================================================================
 
+// departments/department.service.js
 const db = require('_helpers/db');
 
 module.exports = {
@@ -918,15 +919,37 @@ module.exports = {
 };
 
 // ====== QUERIES ======
+/**
+ * Returns all departments with their employees.
+ * Each employee includes its Account and Position relations (no longer uses the old 'position' column).
+ */
 async function getAll() {
   const departments = await db.Department.findAll({
     include: [
-      { model: db.Employee, as: 'Employees', attributes: ['EmployeeID', 'position', 'status'] }
+      {
+        model: db.Employee,
+        as: 'Employees',
+        attributes: [
+          'EmployeeID',
+          'accountId',
+          'positionId',
+          'headEmployeeId',
+          'departmentId',
+          'hireDate',
+          'status',
+          'created',
+          'updated'
+        ],
+        include: [
+          { model: db.Position, as: 'Position', attributes: ['id', 'name', 'status'] },
+          { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] }
+        ]
+      }
     ],
     order: [['id', 'ASC']]
   });
 
-  // recalc employeeCounts
+  // recalc employeeCounts and persist if necessary
   for (const dept of departments) {
     const count = dept.Employees ? dept.Employees.length : 0;
     if (dept.employeeCounts !== count) {
@@ -938,12 +961,34 @@ async function getAll() {
   return departments;
 }
 
+/**
+ * Returns a single department by id, including employees with Position and Account.
+ */
 async function getById(id) {
   const department = await db.Department.findByPk(id, {
     include: [
-      { model: db.Employee, as: 'Employees', attributes: ['EmployeeID', 'position', 'status'] }
+      {
+        model: db.Employee,
+        as: 'Employees',
+        attributes: [
+          'EmployeeID',
+          'accountId',
+          'positionId',
+          'headEmployeeId',
+          'departmentId',
+          'hireDate',
+          'status',
+          'created',
+          'updated'
+        ],
+        include: [
+          { model: db.Position, as: 'Position', attributes: ['id', 'name', 'status'] },
+          { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] }
+        ]
+      }
     ]
   });
+
   if (!department) throw 'Department not found';
 
   const count = department.Employees ? department.Employees.length : 0;
@@ -1224,7 +1269,7 @@ async function transferDepartment(req, res, next) {
 
 ================================================================================
 File: employees\employee.model.js
-Size: 2.47 kB
+Size: 2.53 kB
 ================================================================================
 
 // employees/employee.model.js
@@ -1290,9 +1335,8 @@ module.exports = (sequelize) => {
 
   const Employee = sequelize.define('Employee', attributes, options);
 
-  // 🧩 Define associations
   Employee.associate = (models) => {
-    // Link to Account
+    // Account relation
     Employee.belongsTo(models.Account, {
       foreignKey: 'accountId',
       as: 'Account',
@@ -1300,7 +1344,7 @@ module.exports = (sequelize) => {
       onUpdate: 'CASCADE'
     });
 
-    // Link to Department
+    // Department relation
     Employee.belongsTo(models.Department, {
       foreignKey: 'departmentId',
       as: 'Department',
@@ -1308,26 +1352,30 @@ module.exports = (sequelize) => {
       onUpdate: 'CASCADE'
     });
 
-    // Link to Position
-    Employee.belongsTo(models.Position, {
-      foreignKey: 'positionId',
-      as: 'Position',
-      onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+    // Position relation
+    if (models.Position) {
+      Employee.belongsTo(models.Position, {
+        foreignKey: 'positionId',
+        as: 'Position',
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE'
+      });
+    }
 
-    // Link to Manager (Head)
-    Employee.belongsTo(models.Employee, {
+    // Head (self-relation)
+    Employee.belongsTo(Employee, {
       foreignKey: 'headEmployeeId',
       as: 'Head',
+      targetKey: 'EmployeeID',
       onDelete: 'SET NULL',
       onUpdate: 'CASCADE'
     });
 
-    // Allow reverse manager relation (optional)
-    Employee.hasMany(models.Employee, {
+    // Subordinates reverse relation
+    Employee.hasMany(Employee, {
       foreignKey: 'headEmployeeId',
-      as: 'Subordinates'
+      as: 'Subordinates',
+      sourceKey: 'EmployeeID'
     });
   };
 
@@ -1337,7 +1385,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: employees\employee.service.js
-Size: 7.92 kB
+Size: 6.75 kB
 ================================================================================
 
 // employees/employee.service.js
@@ -1358,10 +1406,10 @@ module.exports = {
 async function getAll() {
   return await db.Employee.findAll({
     include: [
-      { model: db.Account, as: 'Account' },
+      { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] },
       { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] },
-      { model: db.Position, as: 'Position' }, // 🔹 NEW include
-      { model: db.Employee, as: 'Head', attributes: ['EmployeeID'], include: [{ model: db.Account, as: 'Account', attributes: ['firstName', 'lastName', 'email'] }] } // 🔹 NEW include
+      { model: db.Position, as: 'Position', attributes: ['id', 'name', 'status'] },
+      { model: db.Employee, as: 'Head', attributes: ['EmployeeID'], include: [{ model: db.Account, as: 'Account', attributes: ['firstName', 'lastName'] }] }
     ],
     order: [['created', 'DESC']]
   });
@@ -1370,15 +1418,14 @@ async function getAll() {
 async function getById(id) {
   return await db.Employee.findByPk(id, {
     include: [
-      { model: db.Account, as: 'Account' },
+      { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] },
       { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] },
-      { model: db.Position, as: 'Position' }, // 🔹 NEW include
-      { model: db.Employee, as: 'Head', attributes: ['EmployeeID'], include: [{ model: db.Account, as: 'Account', attributes: ['firstName', 'lastName', 'email'] }] } // 🔹 NEW include
+      { model: db.Position, as: 'Position', attributes: ['id', 'name', 'status'] },
+      { model: db.Employee, as: 'Head', attributes: ['EmployeeID'], include: [{ model: db.Account, as: 'Account', attributes: ['firstName', 'lastName'] }] }
     ]
   });
 }
 
-// ====== ID GENERATION ======
 async function generateNextEmployeeID() {
   const last = await db.Employee.findOne({ order: [['EmployeeID', 'DESC']] });
   let nextNum = 1;
@@ -1412,26 +1459,11 @@ async function create(params) {
   const existing = await db.Employee.findOne({ where: { accountId: account.id } });
   if (existing) throw 'Employee for this account already exists';
 
-  // 🔹 Validate position and headEmployeeId
-  if (!params.positionId) throw 'positionId is required';
-  const position = await db.Position.findByPk(params.positionId);
-  if (!position) throw 'Selected position not found';
-
-  // Manager rule: no head required
-  if (position.name.toLowerCase() === 'manager') {
-    params.headEmployeeId = null;
-  } else {
-    // Non-manager rule: must have a head
-    if (!params.headEmployeeId) throw 'headEmployeeId is required for this position';
-    const head = await db.Employee.findOne({ where: { EmployeeID: params.headEmployeeId } });
-    if (!head) throw 'Selected head (manager) not found';
-  }
-
   const base = {
     accountId: account.id,
+    positionId: params.positionId || null,
+    headEmployeeId: params.headEmployeeId || null,
     departmentId: params.departmentId || null,
-    positionId: params.positionId || null, // 🔹 NEW
-    headEmployeeId: params.headEmployeeId || null, // 🔹 NEW
     hireDate: params.hireDate || null,
     status,
     created: new Date()
@@ -1466,7 +1498,7 @@ async function create(params) {
 
   if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
 
-  // 🔹 Log workflow
+  // 🔹 log workflow
   await logWorkflow(employee.EmployeeID, 'Employee Created', `Employee linked to account ${account.email}`);
 
   return await getById(employee.EmployeeID);
@@ -1489,20 +1521,6 @@ async function update(id, params) {
     await logWorkflow(employee.EmployeeID, 'Account Changed', `Employee assigned to account ${account.email}`);
   }
 
-  // 🔹 Validate position/head changes
-  if (params.positionId) {
-    const pos = await db.Position.findByPk(params.positionId);
-    if (!pos) throw 'Selected position not found';
-
-    if (pos.name.toLowerCase() === 'manager') {
-      params.headEmployeeId = null;
-    } else {
-      if (!params.headEmployeeId) throw 'headEmployeeId is required for this position';
-      const head = await db.Employee.findOne({ where: { EmployeeID: params.headEmployeeId } });
-      if (!head) throw 'Selected head (manager) not found';
-    }
-  }
-
   const allowed = ['positionId', 'headEmployeeId', 'departmentId', 'hireDate', 'status'];
   for (const f of allowed) {
     if (params[f] !== undefined) {
@@ -1519,6 +1537,7 @@ async function update(id, params) {
   if (params.departmentId && params.departmentId !== oldDept) {
     if (oldDept) await updateDepartmentCount(oldDept);
     if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
+
     await logDepartmentTransfer(employee.EmployeeID, oldDept, employee.departmentId);
   } else if (params.departmentId) {
     await updateDepartmentCount(employee.departmentId);
