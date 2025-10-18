@@ -16,8 +16,10 @@ module.exports = {
 async function getAll() {
   return await db.Employee.findAll({
     include: [
-      { model: db.Account, as: 'Account' },
-      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] }
+      { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] },
+      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] },
+      { model: db.Position, as: 'Position', attributes: ['id', 'name', 'status'] },
+      { model: db.Employee, as: 'Head', attributes: ['EmployeeID'], include: [{ model: db.Account, as: 'Account', attributes: ['firstName', 'lastName'] }] }
     ],
     order: [['created', 'DESC']]
   });
@@ -26,8 +28,10 @@ async function getAll() {
 async function getById(id) {
   return await db.Employee.findByPk(id, {
     include: [
-      { model: db.Account, as: 'Account' },
-      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] }
+      { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] },
+      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] },
+      { model: db.Position, as: 'Position', attributes: ['id', 'name', 'status'] },
+      { model: db.Employee, as: 'Head', attributes: ['EmployeeID'], include: [{ model: db.Account, as: 'Account', attributes: ['firstName', 'lastName'] }] }
     ]
   });
 }
@@ -67,7 +71,8 @@ async function create(params) {
 
   const base = {
     accountId: account.id,
-    position: params.position || null,
+    positionId: params.positionId || null,
+    headEmployeeId: params.headEmployeeId || null,
     departmentId: params.departmentId || null,
     hireDate: params.hireDate || null,
     status,
@@ -126,7 +131,7 @@ async function update(id, params) {
     await logWorkflow(employee.EmployeeID, 'Account Changed', `Employee assigned to account ${account.email}`);
   }
 
-  const allowed = ['position', 'departmentId', 'hireDate', 'status'];
+  const allowed = ['positionId', 'headEmployeeId', 'departmentId', 'hireDate', 'status'];
   for (const f of allowed) {
     if (params[f] !== undefined) {
       employee[f] =
@@ -138,7 +143,7 @@ async function update(id, params) {
 
   await employee.save();
 
-  // 🔹 log transfer if department changed - USING NEW DEPARTMENT TRANSFER LOGGER
+  // 🔹 log transfer if department changed
   if (params.departmentId && params.departmentId !== oldDept) {
     if (oldDept) await updateDepartmentCount(oldDept);
     if (employee.departmentId) await updateDepartmentCount(employee.departmentId);

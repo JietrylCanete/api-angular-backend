@@ -808,35 +808,6 @@ Size: 646 B
 }
 
 ================================================================================
-File: config.txt
-Size: 584 B
-================================================================================
-
-{
-    "database": {
-        "host": "localhost",
-        "port": 3306,
-        "user": "root",
-        "password": "root",
-        "database": "trial_db107"
-    },
-    "secret": "49857eae-5b2d-4e74-b5e7-99953f347936",
-    "emailFrom": "info@node-mysql-signup-verification-api.com",
-    "smtpOptions": {
-        "host": "smtp.ethereal.email",
-        "port": 587,
-        "auth": {
-            "user": "shyanne.hills25@ethereal.email",
-            "pass": "QkMGGHJaq2WcpKHME6"
-        },
-        "tls": {
-            "rejectUnauthorized": false
-        }
-    }
-}
-
-
-================================================================================
 File: departments\department.controller.js
 Size: 1.46 kB
 ================================================================================
@@ -1253,9 +1224,10 @@ async function transferDepartment(req, res, next) {
 
 ================================================================================
 File: employees\employee.model.js
-Size: 1.68 kB
+Size: 2.47 kB
 ================================================================================
 
+// employees/employee.model.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -1272,9 +1244,15 @@ module.exports = (sequelize) => {
       allowNull: false,
       field: 'accountId'
     },
-    position: {
-      type: DataTypes.STRING,
-      allowNull: true
+    positionId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      field: 'positionId'
+    },
+    headEmployeeId: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      field: 'headEmployeeId'
     },
     departmentId: {
       type: DataTypes.INTEGER.UNSIGNED,
@@ -1312,18 +1290,44 @@ module.exports = (sequelize) => {
 
   const Employee = sequelize.define('Employee', attributes, options);
 
+  // 🧩 Define associations
   Employee.associate = (models) => {
+    // Link to Account
     Employee.belongsTo(models.Account, {
       foreignKey: 'accountId',
       as: 'Account',
       onDelete: 'CASCADE',
       onUpdate: 'CASCADE'
     });
+
+    // Link to Department
     Employee.belongsTo(models.Department, {
       foreignKey: 'departmentId',
-      as: 'Department', // ✅ must match service include
+      as: 'Department',
       onDelete: 'SET NULL',
       onUpdate: 'CASCADE'
+    });
+
+    // Link to Position
+    Employee.belongsTo(models.Position, {
+      foreignKey: 'positionId',
+      as: 'Position',
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE'
+    });
+
+    // Link to Manager (Head)
+    Employee.belongsTo(models.Employee, {
+      foreignKey: 'headEmployeeId',
+      as: 'Head',
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE'
+    });
+
+    // Allow reverse manager relation (optional)
+    Employee.hasMany(models.Employee, {
+      foreignKey: 'headEmployeeId',
+      as: 'Subordinates'
     });
   };
 
@@ -1333,7 +1337,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: employees\employee.service.js
-Size: 6.11 kB
+Size: 7.92 kB
 ================================================================================
 
 // employees/employee.service.js
@@ -1355,7 +1359,9 @@ async function getAll() {
   return await db.Employee.findAll({
     include: [
       { model: db.Account, as: 'Account' },
-      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] }
+      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] },
+      { model: db.Position, as: 'Position' }, // 🔹 NEW include
+      { model: db.Employee, as: 'Head', attributes: ['EmployeeID'], include: [{ model: db.Account, as: 'Account', attributes: ['firstName', 'lastName', 'email'] }] } // 🔹 NEW include
     ],
     order: [['created', 'DESC']]
   });
@@ -1365,11 +1371,14 @@ async function getById(id) {
   return await db.Employee.findByPk(id, {
     include: [
       { model: db.Account, as: 'Account' },
-      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] }
+      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] },
+      { model: db.Position, as: 'Position' }, // 🔹 NEW include
+      { model: db.Employee, as: 'Head', attributes: ['EmployeeID'], include: [{ model: db.Account, as: 'Account', attributes: ['firstName', 'lastName', 'email'] }] } // 🔹 NEW include
     ]
   });
 }
 
+// ====== ID GENERATION ======
 async function generateNextEmployeeID() {
   const last = await db.Employee.findOne({ order: [['EmployeeID', 'DESC']] });
   let nextNum = 1;
@@ -1403,10 +1412,26 @@ async function create(params) {
   const existing = await db.Employee.findOne({ where: { accountId: account.id } });
   if (existing) throw 'Employee for this account already exists';
 
+  // 🔹 Validate position and headEmployeeId
+  if (!params.positionId) throw 'positionId is required';
+  const position = await db.Position.findByPk(params.positionId);
+  if (!position) throw 'Selected position not found';
+
+  // Manager rule: no head required
+  if (position.name.toLowerCase() === 'manager') {
+    params.headEmployeeId = null;
+  } else {
+    // Non-manager rule: must have a head
+    if (!params.headEmployeeId) throw 'headEmployeeId is required for this position';
+    const head = await db.Employee.findOne({ where: { EmployeeID: params.headEmployeeId } });
+    if (!head) throw 'Selected head (manager) not found';
+  }
+
   const base = {
     accountId: account.id,
-    position: params.position || null,
     departmentId: params.departmentId || null,
+    positionId: params.positionId || null, // 🔹 NEW
+    headEmployeeId: params.headEmployeeId || null, // 🔹 NEW
     hireDate: params.hireDate || null,
     status,
     created: new Date()
@@ -1441,7 +1466,7 @@ async function create(params) {
 
   if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
 
-  // 🔹 log workflow
+  // 🔹 Log workflow
   await logWorkflow(employee.EmployeeID, 'Employee Created', `Employee linked to account ${account.email}`);
 
   return await getById(employee.EmployeeID);
@@ -1464,7 +1489,21 @@ async function update(id, params) {
     await logWorkflow(employee.EmployeeID, 'Account Changed', `Employee assigned to account ${account.email}`);
   }
 
-  const allowed = ['position', 'departmentId', 'hireDate', 'status'];
+  // 🔹 Validate position/head changes
+  if (params.positionId) {
+    const pos = await db.Position.findByPk(params.positionId);
+    if (!pos) throw 'Selected position not found';
+
+    if (pos.name.toLowerCase() === 'manager') {
+      params.headEmployeeId = null;
+    } else {
+      if (!params.headEmployeeId) throw 'headEmployeeId is required for this position';
+      const head = await db.Employee.findOne({ where: { EmployeeID: params.headEmployeeId } });
+      if (!head) throw 'Selected head (manager) not found';
+    }
+  }
+
+  const allowed = ['positionId', 'headEmployeeId', 'departmentId', 'hireDate', 'status'];
   for (const f of allowed) {
     if (params[f] !== undefined) {
       employee[f] =
@@ -1476,11 +1515,10 @@ async function update(id, params) {
 
   await employee.save();
 
-  // 🔹 log transfer if department changed - USING NEW DEPARTMENT TRANSFER LOGGER
+  // 🔹 log transfer if department changed
   if (params.departmentId && params.departmentId !== oldDept) {
     if (oldDept) await updateDepartmentCount(oldDept);
     if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
-
     await logDepartmentTransfer(employee.EmployeeID, oldDept, employee.departmentId);
   } else if (params.departmentId) {
     await updateDepartmentCount(employee.departmentId);
@@ -1521,6 +1559,7 @@ async function updateDepartmentCount(departmentId) {
   );
 }
 
+
 ================================================================================
 File: init-db.js
 Size: 515 B
@@ -1549,7 +1588,7 @@ initializeDatabase();
 
 ================================================================================
 File: package.json
-Size: 1.01 kB
+Size: 1.02 kB
 ================================================================================
 
 {
@@ -1560,7 +1599,7 @@ Size: 1.01 kB
     "start": "node ./server.js",
     "start:dev": "nodemon ./server.js",
     "init-db": "node ./init-db.js",
-    "export:all": "folder2txt --output Backend1.txt C:/Users/HF/Aproduction/api-angular-backend"
+    "export:all": "folder2txt --output Backend.txt C:/Users/MY PC/JAVA/deployed production/api-angular-backend"
   },
   "keywords": [],
   "author": "",
@@ -1588,6 +1627,138 @@ Size: 1.01 kB
     "nodemon": "^3.1.9"
   }
 }
+
+================================================================================
+File: positions\position.controller.js
+Size: 1.12 kB
+================================================================================
+
+// positions/position.controller.js
+const express = require('express');
+const router = express.Router();
+const positionService = require('./position.service');
+
+router.get('/', getAll);
+router.get('/:id', getById);
+router.post('/', create);
+router.put('/:id', update);
+router.delete('/:id', _delete);
+
+module.exports = router;
+
+function getAll(req, res, next) {
+  positionService.getAll()
+    .then(positions => res.json(positions))
+    .catch(next);
+}
+
+function getById(req, res, next) {
+  positionService.getById(req.params.id)
+    .then(p => p ? res.json(p) : res.status(404).json({ message: 'Not found' }))
+    .catch(next);
+}
+
+function create(req, res, next) {
+  positionService.create(req.body)
+    .then(p => res.status(201).json(p))
+    .catch(err => next(err));
+}
+
+function update(req, res, next) {
+  positionService.update(req.params.id, req.body)
+    .then(p => res.json(p))
+    .catch(err => next(err));
+}
+
+function _delete(req, res, next) {
+  positionService.delete(req.params.id)
+    .then(() => res.json({ message: 'Deleted' }))
+    .catch(err => next(err));
+}
+
+
+================================================================================
+File: positions\position.model.js
+Size: 774 B
+================================================================================
+
+// positions/position.model.js
+const { DataTypes } = require('sequelize');
+
+module.exports = (sequelize) => {
+  const Position = sequelize.define('Position', {
+    id: { type: DataTypes.INTEGER.UNSIGNED, primaryKey: true, autoIncrement: true },
+    name: { type: DataTypes.STRING, allowNull: false, unique: true },
+    status: {
+      type: DataTypes.ENUM('active', 'inactive'),
+      allowNull: false,
+      defaultValue: 'active'
+    }
+  }, {
+    tableName: 'positions',
+    timestamps: false
+  });
+
+  Position.associate = (models) => {
+    // Position has many Employees
+    if (models.Employee) {
+      Position.hasMany(models.Employee, {
+        foreignKey: 'positionId',
+        as: 'Employees'
+      });
+    }
+  };
+
+  return Position;
+};
+
+
+================================================================================
+File: positions\position.service.js
+Size: 1.1 kB
+================================================================================
+
+// positions/position.service.js
+const db = require('../_helpers/db'); // adjust path if your project stores db helper elsewhere
+
+module.exports = {
+  getAll,
+  getById,
+  create,
+  update,
+  delete: _delete
+};
+
+async function getAll() {
+  return db.Position.findAll({ order: [['id', 'ASC']] });
+}
+
+async function getById(id) {
+  return db.Position.findByPk(id);
+}
+
+async function create(params) {
+  if (!params || !params.name) throw 'Position name is required';
+  const existing = await db.Position.findOne({ where: { name: params.name }});
+  if (existing) throw 'Position already exists';
+  return db.Position.create({ name: params.name, status: params.status || 'active' });
+}
+
+async function update(id, params) {
+  const pos = await db.Position.findByPk(id);
+  if (!pos) throw 'Position not found';
+  pos.name = params.name ?? pos.name;
+  pos.status = params.status ?? pos.status;
+  await pos.save();
+  return pos;
+}
+
+async function _delete(id) {
+  const pos = await db.Position.findByPk(id);
+  if (!pos) throw 'Position not found';
+  await pos.destroy();
+}
+
 
 ================================================================================
 File: README.md
@@ -1976,7 +2147,7 @@ async function _delete(id) {
 
 ================================================================================
 File: server.js
-Size: 2.18 kB
+Size: 2.78 kB
 ================================================================================
 
 require('rootpath')();
@@ -2004,13 +2175,27 @@ app.use(cors({
   credentials: true
 }));
 
-// --- HEALTH CHECK ---
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    service: 'Node.js Backend API'
-  });
+// --- DATABASE HEALTH CHECK ---
+app.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    await db.sequelize.authenticate();
+    
+    res.status(200).json({ 
+      status: 'OK', 
+      timestamp: new Date().toISOString(),
+      service: 'Node.js Backend API',
+      database: 'Connected'
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: 'ERROR', 
+      timestamp: new Date().toISOString(),
+      service: 'Node.js Backend API',
+      database: 'Disconnected',
+      error: error.message
+    });
+  }
 });
 
 // --- ROUTES ---
@@ -2019,6 +2204,8 @@ app.use('/employees', require('./employees/employee.controller'));
 app.use('/departments', require('./departments/department.controller'));
 app.use('/requests', require('./requests/request.controller'));
 app.use('/employee-workflows', require('./employees/employee-workflow.controller'));
+app.use('/positions', require('./positions/position.controller'));
+
 
 // --- API ROOT ---
 app.get('/', (req, res) => {
@@ -2030,7 +2217,8 @@ app.get('/', (req, res) => {
       employees: '/employees', 
       departments: '/departments',
       requests: '/requests',
-      workflows: '/employee-workflows'
+      workflows: '/employee-workflows',
+      health: '/health'
     }
   });
 });
@@ -2054,6 +2242,9 @@ app.listen(port, () => {
   console.log(`📍 Health check: http://localhost:${port}/health`);
   console.log(`📍 API Root: http://localhost:${port}/`);
   console.log('✅ All routes loaded successfully');
+  
+  // Database initialization will happen in the background
+  console.log('🔄 Database initialization in progress...');
 });
 
 ================================================================================
@@ -2932,7 +3123,7 @@ module.exports = asyncHandler;
 
 ================================================================================
 File: _helpers\db.js
-Size: 3.29 kB
+Size: 4.26 kB
 ================================================================================
 
 // _helpers/db.js
@@ -2940,13 +3131,12 @@ const mysql = require('mysql2/promise');
 const config = require('config.json');
 const { Sequelize } = require('sequelize');
 
-module.exports = (db = {});
+module.exports = db = {};
 db.sequelize = null;
 db.Sequelize = Sequelize;
 
 initialize().catch(err => {
   console.error('Failed to initialize DB:', err);
-  process.exit(1);
 });
 
 async function initialize() {
@@ -2982,6 +3172,7 @@ async function initialize() {
   // -------------------------
   db.Account = require('../accounts/account.model.js')(sequelize);
   db.RefreshToken = require('../accounts/refresh-token.model.js')(sequelize);
+  db.Position = require('../positions/position.model.js')(sequelize); // ✅ NEW
   db.Employee = require('../employees/employee.model.js')(sequelize);
   db.Department = require('../departments/department.model.js')(sequelize);
   db.Request = require('../requests/request.model.js')(sequelize);
@@ -3001,23 +3192,55 @@ async function initialize() {
   db.Department.hasMany(db.Employee, { as: 'Employees', foreignKey: 'departmentId', onDelete: 'SET NULL' });
   db.Employee.belongsTo(db.Department, { as: 'Department', foreignKey: 'departmentId' });
 
+  // 🔹 NEW: Position associations
+  db.Position.hasMany(db.Employee, { as: 'Employees', foreignKey: 'positionId', onDelete: 'SET NULL' });
+  db.Employee.belongsTo(db.Position, { as: 'Position', foreignKey: 'positionId' });
+
+  // 🔹 NEW: Employee self-reference (head/subordinates)
+  db.Employee.belongsTo(db.Employee, {
+    foreignKey: 'headEmployeeId',
+    targetKey: 'EmployeeID',
+    as: 'Head',
+    constraints: false
+  });
+  db.Employee.hasMany(db.Employee, {
+    foreignKey: 'headEmployeeId',
+    sourceKey: 'EmployeeID',
+    as: 'Subordinates',
+    constraints: false
+  });
+
   db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
 
   // optional association for workflow -> employee (no cascading)
   if (db.EmployeeWorkflow && db.Employee) {
-    db.Employee.hasMany(db.EmployeeWorkflow, { foreignKey: 'employeeId', sourceKey: 'EmployeeID', as: 'Workflows', constraints: false });
-    db.EmployeeWorkflow.belongsTo(db.Employee, { foreignKey: 'employeeId', targetKey: 'EmployeeID', as: 'Employee', constraints: false });
+    db.Employee.hasMany(db.EmployeeWorkflow, {
+      foreignKey: 'employeeId',
+      sourceKey: 'EmployeeID',
+      as: 'Workflows',
+      constraints: false
+    });
+    db.EmployeeWorkflow.belongsTo(db.Employee, {
+      foreignKey: 'employeeId',
+      targetKey: 'EmployeeID',
+      as: 'Employee',
+      constraints: false
+    });
   }
 
-  // sync
+  // Safe sync
   try {
-    console.info('[DB] Syncing models to database (force=true).');
-    await sequelize.sync({ alter: true });
-    console.info('[DB] Sequelize sync completed.');
+    console.info('[DB] Syncing models to database with safe options.');
+    await sequelize.sync({ force: false });
+    console.info('[DB] Sequelize sync completed successfully.');
   } catch (syncErr) {
-    console.error('[DB] Sequelize sync failed:', syncErr);
-    throw syncErr;
+    console.error('[DB] Sequelize sync failed:', syncErr.message);
+    if (syncErr.code === 'ER_TOO_MANY_KEYS' || syncErr.errno === 1069) {
+      console.warn('[DB] Too many keys error - tables likely already exist.');
+    } else {
+      console.error('[DB] Other sync error:', syncErr);
+    }
   }
 }
 

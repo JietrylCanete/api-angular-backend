@@ -52,6 +52,8 @@ app.use('/employees', require('./employees/employee.controller'));
 app.use('/departments', require('./departments/department.controller'));
 app.use('/requests', require('./requests/request.controller'));
 app.use('/employee-workflows', require('./employees/employee-workflow.controller'));
+app.use('/positions', require('./positions/position.controller'));
+
 
 // --- API ROOT ---
 app.get('/', (req, res) => {

@@ -9,7 +9,6 @@ db.Sequelize = Sequelize;
 
 initialize().catch(err => {
   console.error('Failed to initialize DB:', err);
-  // Don't exit process - let server continue running
 });
 
 async function initialize() {
@@ -45,6 +44,7 @@ async function initialize() {
   // -------------------------
   db.Account = require('../accounts/account.model.js')(sequelize);
   db.RefreshToken = require('../accounts/refresh-token.model.js')(sequelize);
+  db.Position = require('../positions/position.model.js')(sequelize); // ✅ NEW
   db.Employee = require('../employees/employee.model.js')(sequelize);
   db.Department = require('../departments/department.model.js')(sequelize);
   db.Request = require('../requests/request.model.js')(sequelize);
@@ -64,30 +64,52 @@ async function initialize() {
   db.Department.hasMany(db.Employee, { as: 'Employees', foreignKey: 'departmentId', onDelete: 'SET NULL' });
   db.Employee.belongsTo(db.Department, { as: 'Department', foreignKey: 'departmentId' });
 
+  // 🔹 NEW: Position associations
+  db.Position.hasMany(db.Employee, { as: 'Employees', foreignKey: 'positionId', onDelete: 'SET NULL' });
+  db.Employee.belongsTo(db.Position, { as: 'Position', foreignKey: 'positionId' });
+
+  // 🔹 NEW: Employee self-reference (head/subordinates)
+  db.Employee.belongsTo(db.Employee, {
+    foreignKey: 'headEmployeeId',
+    targetKey: 'EmployeeID',
+    as: 'Head',
+    constraints: false
+  });
+  db.Employee.hasMany(db.Employee, {
+    foreignKey: 'headEmployeeId',
+    sourceKey: 'EmployeeID',
+    as: 'Subordinates',
+    constraints: false
+  });
+
   db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
 
   // optional association for workflow -> employee (no cascading)
   if (db.EmployeeWorkflow && db.Employee) {
-    db.Employee.hasMany(db.EmployeeWorkflow, { foreignKey: 'employeeId', sourceKey: 'EmployeeID', as: 'Workflows', constraints: false });
-    db.EmployeeWorkflow.belongsTo(db.Employee, { foreignKey: 'employeeId', targetKey: 'EmployeeID', as: 'Employee', constraints: false });
+    db.Employee.hasMany(db.EmployeeWorkflow, {
+      foreignKey: 'employeeId',
+      sourceKey: 'EmployeeID',
+      as: 'Workflows',
+      constraints: false
+    });
+    db.EmployeeWorkflow.belongsTo(db.Employee, {
+      foreignKey: 'employeeId',
+      targetKey: 'EmployeeID',
+      as: 'Employee',
+      constraints: false
+    });
   }
 
-  // Safe sync with error handling - THIS IS THE KEY FIX
+  // Safe sync
   try {
     console.info('[DB] Syncing models to database with safe options.');
-    
-    // Use safe sync to avoid structure modifications
-    await sequelize.sync({ force: false });  // CHANGED FROM { force: true } to { force: false }
-    
+    await sequelize.sync({ force: false });
     console.info('[DB] Sequelize sync completed successfully.');
   } catch (syncErr) {
     console.error('[DB] Sequelize sync failed:', syncErr.message);
-    
-    // If it's a "too many keys" error, log and continue (tables already exist)
     if (syncErr.code === 'ER_TOO_MANY_KEYS' || syncErr.errno === 1069) {
-      console.warn('[DB] Too many keys error - tables likely already exist with proper structure.');
-      console.warn('[DB] Continuing with existing database structure.');
+      console.warn('[DB] Too many keys error - tables likely already exist.');
     } else {
       console.error('[DB] Other sync error:', syncErr);
     }

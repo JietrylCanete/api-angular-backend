@@ -1,3 +1,4 @@
+// departments/department.service.js
 const db = require('_helpers/db');
 
 module.exports = {
@@ -9,15 +10,37 @@ module.exports = {
 };
 
 // ====== QUERIES ======
+/**
+ * Returns all departments with their employees.
+ * Each employee includes its Account and Position relations (no longer uses the old 'position' column).
+ */
 async function getAll() {
   const departments = await db.Department.findAll({
     include: [
-      { model: db.Employee, as: 'Employees', attributes: ['EmployeeID', 'position', 'status'] }
+      {
+        model: db.Employee,
+        as: 'Employees',
+        attributes: [
+          'EmployeeID',
+          'accountId',
+          'positionId',
+          'headEmployeeId',
+          'departmentId',
+          'hireDate',
+          'status',
+          'created',
+          'updated'
+        ],
+        include: [
+          { model: db.Position, as: 'Position', attributes: ['id', 'name', 'status'] },
+          { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] }
+        ]
+      }
     ],
     order: [['id', 'ASC']]
   });
 
-  // recalc employeeCounts
+  // recalc employeeCounts and persist if necessary
   for (const dept of departments) {
     const count = dept.Employees ? dept.Employees.length : 0;
     if (dept.employeeCounts !== count) {
@@ -29,12 +52,34 @@ async function getAll() {
   return departments;
 }
 
+/**
+ * Returns a single department by id, including employees with Position and Account.
+ */
 async function getById(id) {
   const department = await db.Department.findByPk(id, {
     include: [
-      { model: db.Employee, as: 'Employees', attributes: ['EmployeeID', 'position', 'status'] }
+      {
+        model: db.Employee,
+        as: 'Employees',
+        attributes: [
+          'EmployeeID',
+          'accountId',
+          'positionId',
+          'headEmployeeId',
+          'departmentId',
+          'hireDate',
+          'status',
+          'created',
+          'updated'
+        ],
+        include: [
+          { model: db.Position, as: 'Position', attributes: ['id', 'name', 'status'] },
+          { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] }
+        ]
+      }
     ]
   });
+
   if (!department) throw 'Department not found';
 
   const count = department.Employees ? department.Employees.length : 0;
