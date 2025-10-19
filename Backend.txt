@@ -1128,7 +1128,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: employees\employee.controller.js
-Size: 3.76 kB
+Size: 3.89 kB
 ================================================================================
 
 // employees/employees.controller.js
@@ -1244,13 +1244,11 @@ async function transferDepartment(req, res, next) {
     employee.departmentId = toDeptId;
     await employee.save();
 
-    // 🔹 log workflow for transfer
-    const logWorkflow = require('_helpers/workflow-logger');
-    await logWorkflow(
-      employee.EmployeeID,
-      'Transferred',
-      `Moved from department ${fromDeptId || 'None'} to ${toDeptId}`
-    );
+    // 🔹 Use helper that resolves department names and logs them (not numeric IDs)
+    // workflow-logger.js exports logDepartmentTransfer — use that.
+    const { logDepartmentTransfer } = require('_helpers/workflow-logger');
+    // call it (it will resolve names and create a friendly description)
+    await logDepartmentTransfer(employee.EmployeeID, fromDeptId, toDeptId);
 
     res.json({
       message: `Employee ${employeeId} transferred successfully`,
@@ -1825,10 +1823,9 @@ module.exports = router;
 
 ================================================================================
 File: requests\request.controller.js
-Size: 2.53 kB
+Size: 2.85 kB
 ================================================================================
 
-// requests/request.controller.js
 const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
@@ -1838,23 +1835,35 @@ const requestService = require('./request.service');
 // Routes
 router.get('/', getAll);
 router.get('/:id', getById);
+
+// NEW: requests handled by approver (manager)
+router.get('/approver/:accountId', getByApprover);
+
 router.post('/', createSchema, create);
 router.put('/:id', updateSchema, update);
 router.delete('/:id', _delete);
 
 module.exports = router;
 
-// Schema definitions
+// schemas & handlers
 function createSchema(req, res, next) {
   const schema = Joi.object({
-    accountId: Joi.number().required(),
+    accountId: Joi.number().optional(),
     employeeEmail: Joi.string().email().optional(),
     type: Joi.string().valid('equipment', 'leave', 'resources').required(),
-    items: Joi.string().trim().min(1).required(),
+    items: Joi.alternatives().try(Joi.string(), Joi.array()).required(),
     quantity: Joi.number().integer().min(1).required(),
-    status: Joi.string().valid('pending', 'approved', 'disapproved', 'rejected').optional()
+    status: Joi.string().valid('pending', 'approved', 'disapproved', 'rejected', 'draft').optional(),
+    // optional flag frontend may send to indicate user clicked For Approval
+    forApproval: Joi.boolean().optional()
   });
   validateRequest(req, next, schema);
+}
+
+function create(req, res, next) {
+  requestService.create(req.body)
+    .then(r => res.status(201).json(r))
+    .catch(next);
 }
 
 function updateSchema(req, res, next) {
@@ -1862,127 +1871,119 @@ function updateSchema(req, res, next) {
     accountId: Joi.number().optional(),
     employeeEmail: Joi.string().email().optional(),
     type: Joi.string().valid('equipment', 'leave', 'resources').optional(),
-    items: Joi.string().trim().min(1).optional(),
+    items: Joi.alternatives().try(Joi.string(), Joi.array()).optional(),
     quantity: Joi.number().integer().min(1).optional(),
-    status: Joi.string().valid('pending', 'approved', 'disapproved', 'rejected').optional()
+    status: Joi.string().valid('pending', 'approved', 'disapproved', 'rejected', 'draft').optional(),
+    approverId: Joi.number().optional()
   });
   validateRequest(req, next, schema);
 }
 
-// Route handlers
-async function getAll(req, res, next) {
-  try {
-    const requests = await requestService.getAll();
-    res.json(requests);
-  } catch (err) {
-    next(err);
-  }
+function update(req, res, next) {
+  requestService.update(req.params.id, req.body)
+    .then(r => res.json(r))
+    .catch(next);
 }
 
-async function getById(req, res, next) {
-  try {
-    const request = await requestService.getById(req.params.id);
-    if (!request) return res.status(404).json({ message: 'Request not found' });
-    res.json(request);
-  } catch (err) {
-    next(err);
-  }
+function _delete(req, res, next) {
+  requestService.delete(req.params.id)
+    .then(() => res.json({ message: 'Request deleted successfully' }))
+    .catch(next);
 }
 
-async function create(req, res, next) {
-  try {
-    const request = await requestService.create(req.body);
-    res.status(201).json(request);
-  } catch (err) {
-    next(err);
-  }
+function getAll(req, res, next) {
+  requestService.getAll()
+    .then(rs => res.json(rs))
+    .catch(next);
 }
 
-async function update(req, res, next) {
-  try {
-    const request = await requestService.update(req.params.id, req.body);
-    res.json(request);
-  } catch (err) {
-    next(err);
-  }
+function getById(req, res, next) {
+  requestService.getById(req.params.id)
+    .then(r => r ? res.json(r) : res.sendStatus(404))
+    .catch(next);
 }
 
-async function _delete(req, res, next) {
-  try {
-    await requestService.delete(req.params.id);
-    res.json({ message: 'Request deleted successfully' });
-  } catch (err) {
-    next(err);
-  }
+// NEW: Get requests assigned to a particular approver account id
+function getByApprover(req, res, next) {
+  const accountId = Number(req.params.accountId);
+  if (!accountId) return res.status(400).json({ message: 'accountId is required' });
+
+  requestService.getRequestsByApprover(accountId)
+    .then(rs => res.json(rs))
+    .catch(next);
 }
+
 
 ================================================================================
 File: requests\request.model.js
-Size: 1.54 kB
+Size: 1.69 kB
 ================================================================================
 
 // requests/request.model.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  const attributes = {
-    requestId: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      autoIncrement: true,
-      primaryKey: true
-    },
-    accountId: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: false,
-      references: {
-        model: 'accounts',
-        key: 'id'
+  const Request = sequelize.define(
+    'Request',
+    {
+      requestId: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        primaryKey: true,
+        autoIncrement: true,
+        field: 'requestId'
       },
-      onUpdate: 'CASCADE',
-      onDelete: 'CASCADE'
+      accountId: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false
+      },
+      approverId: {
+        // Manager/head in charge of approval
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: true
+      },
+      type: {
+        type: DataTypes.ENUM('equipment', 'leave', 'resources'),
+        allowNull: false
+      },
+      items: {
+        type: DataTypes.TEXT,
+        allowNull: false
+      },
+      quantity: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 1
+      },
+      status: {
+        type: DataTypes.ENUM('pending', 'approved', 'disapproved', 'rejected', 'draft'),
+        allowNull: false,
+        defaultValue: 'pending'
+      },
+      created: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW
+      },
+      updated: {
+        type: DataTypes.DATE,
+        allowNull: true
+      }
     },
-    type: {
-      type: DataTypes.ENUM('equipment', 'leave', 'resources'),
-      allowNull: false
-    },
-    items: {
-      type: DataTypes.STRING(255), // item name
-      allowNull: false
-    },
-    quantity: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: false,
-      defaultValue: 1
-    },
-    status: {
-      type: DataTypes.ENUM('pending', 'approved', 'disapproved', 'rejected'),
-      allowNull: false,
-      defaultValue: 'pending'
-    },
-    created: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW
-    },
-    updated: {
-      type: DataTypes.DATE,
-      allowNull: true
+    {
+      tableName: 'requests',
+      timestamps: false
     }
-  };
-
-  const options = {
-    tableName: 'requests',
-    timestamps: false
-  };
-
-  const Request = sequelize.define('Request', attributes, options);
+  );
 
   Request.associate = (models) => {
     if (models.Account) {
       Request.belongsTo(models.Account, {
         foreignKey: 'accountId',
-        targetKey: 'id',
         as: 'Account'
+      });
+      Request.belongsTo(models.Account, {
+        foreignKey: 'approverId',
+        as: 'Approver'
       });
     }
   };
@@ -1993,7 +1994,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: requests\request.service.js
-Size: 4.48 kB
+Size: 4.7 kB
 ================================================================================
 
 const db = require('_helpers/db');
@@ -2004,34 +2005,41 @@ module.exports = {
   getById,
   create,
   update,
-  delete: _delete
+  delete: _delete,
+  getRequestsByApprover
 };
 
 const ALLOWED_TYPES = ['equipment', 'leave', 'resources'];
-const ALLOWED_STATUS = ['pending', 'approved', 'disapproved', 'rejected'];
+const ALLOWED_STATUS = ['pending', 'approved', 'disapproved', 'rejected', 'draft'];
 
+/**
+ * Return all requests (include Account + Approver)
+ */
 async function getAll() {
   return await db.Request.findAll({
-    include: [{ 
-      model: db.Account, 
-      attributes: ['id', 'email', 'firstName', 'lastName'], 
-      required: false 
-    }],
+    include: [
+      { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] },
+      { model: db.Account, as: 'Approver', attributes: ['id', 'email', 'firstName', 'lastName'] }
+    ],
     order: [['created', 'DESC']]
   });
 }
 
+/**
+ * Get request by ID
+ */
 async function getById(id) {
-  if (!id) return null;
   return await db.Request.findByPk(id, {
-    include: [{ 
-      model: db.Account, 
-      attributes: ['id', 'email', 'firstName', 'lastName'], 
-      required: false 
-    }]
+    include: [
+      { model: db.Account, as: 'Account', attributes: ['id', 'email', 'firstName', 'lastName'] },
+      { model: db.Account, as: 'Approver', attributes: ['id', 'email', 'firstName', 'lastName'] }
+    ]
   });
 }
 
+/**
+ * Helpers
+ */
 async function resolveAccountIdFromEmail(email) {
   if (!email) return null;
   const account = await db.Account.findOne({ where: { email } });
@@ -2043,130 +2051,117 @@ async function resolveEmployeeFromAccount(accountId) {
   return await db.Employee.findOne({ where: { accountId } });
 }
 
+/**
+ * Create a request
+ */
 async function create(params) {
   let accountId = params.accountId || null;
-  
-  if (!accountId && params.employeeEmail) {
+
+  if (!accountId && params.employeeEmail)
     accountId = await resolveAccountIdFromEmail(params.employeeEmail);
-  }
 
   if (!accountId) throw 'accountId is required';
+  if (!ALLOWED_TYPES.includes(params.type)) throw 'Invalid request type';
 
-  if (!ALLOWED_TYPES.includes(params.type)) {
-    throw 'Invalid request type';
+  // 👇 Make items always a plain user-friendly string
+  const itemsValue = String(params.items || '').trim();
+  if (!itemsValue) throw 'items cannot be empty';
+
+  const qty = Number(params.quantity || 1);
+  if (!Number.isFinite(qty) || qty < 1) throw 'quantity must be >= 1';
+
+  // Find approver automatically
+  let approverId = null;
+  const employee = await resolveEmployeeFromAccount(accountId);
+  if (employee && employee.headEmployeeId) {
+    const head = await db.Employee.findByPk(employee.headEmployeeId);
+    if (head && head.accountId) approverId = head.accountId;
   }
 
-  if (!params.items || String(params.items).trim() === '') {
-    throw 'items is required';
-  }
-
-  const qty = Number(params.quantity);
-  if (!Number.isFinite(qty) || qty < 1) {
-    throw 'quantity must be an integer >= 1';
-  }
-
-  if (params.status && !ALLOWED_STATUS.includes(params.status)) {
-    throw 'Invalid status';
-  }
+  const status =
+    params.status && ALLOWED_STATUS.includes(params.status)
+      ? params.status
+      : 'draft';
 
   const request = await db.Request.create({
     accountId,
+    approverId,
     type: params.type,
-    items: String(params.items).trim(),
+    items: itemsValue, // ✅ stored clean readable text
     quantity: Math.trunc(qty),
-    status: params.status || 'pending',
+    status,
     created: new Date()
   });
 
-  const employee = await resolveEmployeeFromAccount(accountId);
   if (employee) {
     await logWorkflow(
       employee.EmployeeID,
       'Request Created',
-      `Request #${request.id} (${request.type}) created for ${request.items} x${request.quantity}`
+      `Request #${request.requestId} (${request.type}) created for "${request.items}" x${request.quantity}`
     );
   }
 
-  return await getById(request.id);
+  return await getById(request.requestId);
 }
 
+/**
+ * Update a request
+ */
 async function update(id, params) {
   const request = await db.Request.findByPk(id);
   if (!request) throw 'Request not found';
 
-  if (!params.accountId && params.employeeEmail) {
-    const resolved = await resolveAccountIdFromEmail(params.employeeEmail);
-    if (resolved) params.accountId = resolved;
-  }
-
-  if (params.accountId && params.accountId !== request.accountId) {
-    const account = await db.Account.findByPk(params.accountId);
-    if (!account) throw 'Related account not found for new accountId';
-  }
-
-  if (params.type && !ALLOWED_TYPES.includes(params.type)) {
-    throw 'Invalid request type';
-  }
-  
-  if (params.status && !ALLOWED_STATUS.includes(params.status)) {
-    throw 'Invalid status';
-  }
+  if (params.type && !ALLOWED_TYPES.includes(params.type)) throw 'Invalid type';
+  if (params.status && !ALLOWED_STATUS.includes(params.status)) throw 'Invalid status';
 
   if (params.items !== undefined) {
-    if (!params.items || String(params.items).trim() === '') {
-      throw 'items cannot be empty';
-    }
-    request.items = String(params.items).trim();
+    const clean = String(params.items || '').trim();
+    if (!clean) throw 'items cannot be empty';
+    request.items = clean;
   }
 
   if (params.quantity !== undefined) {
-    const qty = Number(params.quantity);
-    if (!Number.isFinite(qty) || qty < 1) throw 'quantity must be an integer >= 1';
-    request.quantity = Math.trunc(qty);
+    const q = Number(params.quantity);
+    if (!Number.isFinite(q) || q < 1) throw 'quantity must be >= 1';
+    request.quantity = Math.trunc(q);
   }
 
-  const allowed = ['accountId', 'type', 'status'];
-  allowed.forEach(field => {
-    if (params[field] !== undefined) {
-      request[field] = params[field];
-    }
-  });
+  if (params.accountId !== undefined) request.accountId = params.accountId;
+  if (params.approverId !== undefined) request.approverId = params.approverId;
+  if (params.type !== undefined) request.type = params.type;
+  if (params.status !== undefined) request.status = params.status;
 
   request.updated = new Date();
   await request.save();
 
-  const employee = await resolveEmployeeFromAccount(request.accountId);
-  if (employee) {
-    await logWorkflow(
-      employee.EmployeeID,
-      'Request Updated',
-      `Request #${request.id} updated (status: ${request.status})`
-    );
-  }
-
-  return await getById(request.id);
+  return await getById(request.requestId);
 }
 
+/**
+ * Delete
+ */
 async function _delete(id) {
   const request = await db.Request.findByPk(id);
   if (!request) throw 'Request not found';
-  
-  const employee = await resolveEmployeeFromAccount(request.accountId);
-  
   await request.destroy();
-
-  if (employee) {
-    await logWorkflow(
-      employee.EmployeeID,
-      'Request Deleted',
-      `Request #${id} was deleted`
-    );
-  }
 }
+
+/**
+ * Get requests by approver
+ */
+async function getRequestsByApprover(approverAccountId) {
+  if (!approverAccountId) return [];
+  return await db.Request.findAll({
+    where: { approverId: approverAccountId },
+    include: [{ model: db.Account, as: 'Account', attributes: ['id', 'firstName', 'lastName', 'email'] }],
+    order: [['created', 'DESC']]
+  });
+}
+
 
 ================================================================================
 File: server.js
-Size: 2.78 kB
+Size: 2.85 kB
 ================================================================================
 
 require('rootpath')();
@@ -2189,7 +2184,8 @@ app.use(cors({
   origin: [
     'http://localhost:4200',
     'https://api-angular-frontend-rmsj10ism-jietryls-projects.vercel.app',
-    'https://api-angular-frontend.vercel.app'
+    'https://api-angular-frontend.vercel.app',
+    'https://api-angular-frontend-p9n3ot582-jietryls-projects.vercel.app'
   ],
   credentials: true
 }));
@@ -3142,7 +3138,7 @@ module.exports = asyncHandler;
 
 ================================================================================
 File: _helpers\db.js
-Size: 4.26 kB
+Size: 4.84 kB
 ================================================================================
 
 // _helpers/db.js
@@ -3165,7 +3161,7 @@ async function initialize() {
     throw new Error('Missing database configuration in config.json');
   }
 
-  // ensure database exists
+  // ✅ Ensure database exists
   const createConn = await mysql.createConnection({ host, port, user, password });
   try {
     await createConn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\`;`);
@@ -3174,7 +3170,7 @@ async function initialize() {
     await createConn.end();
   }
 
-  // initialize sequelize
+  // ✅ Initialize Sequelize
   const sequelize = new Sequelize(database, user, password, {
     host,
     port,
@@ -3187,35 +3183,37 @@ async function initialize() {
   db.sequelize = sequelize;
 
   // -------------------------
-  // IMPORT MODELS (ensure correct order)
+  // 📦 IMPORT MODELS (correct order)
   // -------------------------
   db.Account = require('../accounts/account.model.js')(sequelize);
   db.RefreshToken = require('../accounts/refresh-token.model.js')(sequelize);
-  db.Position = require('../positions/position.model.js')(sequelize); // ✅ NEW
+  db.Position = require('../positions/position.model.js')(sequelize);
   db.Employee = require('../employees/employee.model.js')(sequelize);
   db.Department = require('../departments/department.model.js')(sequelize);
   db.Request = require('../requests/request.model.js')(sequelize);
-
-  // Register EmployeeWorkflow model (new)
   db.EmployeeWorkflow = require('../employees/employee-workflow.model.js')(sequelize);
 
   // -------------------------
-  // Define associations
+  // 🔗 DEFINE ASSOCIATIONS
   // -------------------------
+
+  // Accounts and refresh tokens
   db.Account.hasMany(db.RefreshToken, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.RefreshToken.belongsTo(db.Account, { foreignKey: 'accountId' });
 
+  // Account ↔ Employee (1:1)
   db.Account.hasOne(db.Employee, { as: 'Account', foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Employee.belongsTo(db.Account, { as: 'Account', foreignKey: 'accountId' });
 
+  // Department ↔ Employee (1:N)
   db.Department.hasMany(db.Employee, { as: 'Employees', foreignKey: 'departmentId', onDelete: 'SET NULL' });
   db.Employee.belongsTo(db.Department, { as: 'Department', foreignKey: 'departmentId' });
 
-  // 🔹 NEW: Position associations
+  // Position ↔ Employee (1:N)
   db.Position.hasMany(db.Employee, { as: 'Employees', foreignKey: 'positionId', onDelete: 'SET NULL' });
   db.Employee.belongsTo(db.Position, { as: 'Position', foreignKey: 'positionId' });
 
-  // 🔹 NEW: Employee self-reference (head/subordinates)
+  // Employee self-reference (manager ↔ subordinates)
   db.Employee.belongsTo(db.Employee, {
     foreignKey: 'headEmployeeId',
     targetKey: 'EmployeeID',
@@ -3229,10 +3227,27 @@ async function initialize() {
     constraints: false
   });
 
-  db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
-  db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
+  // -------------------------
+  // ✅ Request Associations (the fix)
+  // -------------------------
+  // Each Account (employee) can have many Requests
+  db.Account.hasMany(db.Request, { as: 'Requests', foreignKey: 'accountId', onDelete: 'CASCADE' });
 
-  // optional association for workflow -> employee (no cascading)
+  // Requester (the employee who made the request)
+  db.Request.belongsTo(db.Account, {
+    foreignKey: 'accountId',
+    as: 'Account'
+  });
+
+  // Approver (the manager/head assigned to approve)
+  db.Request.belongsTo(db.Account, {
+    foreignKey: 'approverId',
+    as: 'Approver'
+  });
+
+  // -------------------------
+  // Optional: Employee → Workflow
+  // -------------------------
   if (db.EmployeeWorkflow && db.Employee) {
     db.Employee.hasMany(db.EmployeeWorkflow, {
       foreignKey: 'employeeId',
@@ -3240,6 +3255,7 @@ async function initialize() {
       as: 'Workflows',
       constraints: false
     });
+
     db.EmployeeWorkflow.belongsTo(db.Employee, {
       foreignKey: 'employeeId',
       targetKey: 'EmployeeID',
@@ -3248,9 +3264,11 @@ async function initialize() {
     });
   }
 
-  // Safe sync
+  // -------------------------
+  // 🧩 SYNC DATABASE
+  // -------------------------
   try {
-    console.info('[DB] Syncing models to database with safe options.');
+    console.info('[DB] Syncing models to database with safe options...');
     await sequelize.sync({ force: false });
     console.info('[DB] Sequelize sync completed successfully.');
   } catch (syncErr) {

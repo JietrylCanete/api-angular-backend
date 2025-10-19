@@ -111,13 +111,11 @@ async function transferDepartment(req, res, next) {
     employee.departmentId = toDeptId;
     await employee.save();
 
-    // 🔹 log workflow for transfer
-    const logWorkflow = require('_helpers/workflow-logger');
-    await logWorkflow(
-      employee.EmployeeID,
-      'Transferred',
-      `Moved from department ${fromDeptId || 'None'} to ${toDeptId}`
-    );
+    // 🔹 Use helper that resolves department names and logs them (not numeric IDs)
+    // workflow-logger.js exports logDepartmentTransfer — use that.
+    const { logDepartmentTransfer } = require('_helpers/workflow-logger');
+    // call it (it will resolve names and create a friendly description)
+    await logDepartmentTransfer(employee.EmployeeID, fromDeptId, toDeptId);
 
     res.json({
       message: `Employee ${employeeId} transferred successfully`,
