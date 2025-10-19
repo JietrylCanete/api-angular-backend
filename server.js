@@ -21,7 +21,8 @@ const allowedOrigins = [
   'https://api-angular-frontend.vercel.app',
   'https://api-angular-frontend-p9n3ot582-jietryls-projects.vercel.app',
   'https://api-angular-frontend-rmsj10ism-jietryls-projects.vercel.app',
-  'https://api-angular-frontend-i2yfwpwnw-jietryls-projects.vercel.app', // your current deployed one
+  'https://api-angular-frontend-i2yfwpwnw-jietryls-projects.vercel.app',
+  'https://api-angular-frontend-lqswd59bc-jietryls-projects.vercel.app'
 ];
 
 app.use(
